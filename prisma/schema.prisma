@@ -1,0 +1,95 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Resume {
+  id           String       @id @default(cuid())
+  version      Int
+  sourceType   String       @default("google_url") // "google_url" | "local_file"
+  sourceUrl    String?      // Original Google Docs or Google Drive URL shared by user
+  googleFileId String?      // Extracted Google Docs / Drive File ID
+  downloadUrl  String?      // 1-click direct download link (export?format=pdf or uc?export=download)
+  viewUrl      String?      // View/edit link
+  filePath     String       // Path to the active local PDF/DOCX file on disk
+  archivePath  String       // Immutable version snapshot path in data/resume-history/
+  fileName     String
+  fileHash     String       // SHA-256 hash of binary content
+  fileSize     Int          // Bytes
+  modifiedAt   DateTime
+  isCurrent    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  syncJobs     SyncJob[]
+  syncRecords  SyncRecord[]
+}
+
+model Platform {
+  id                String       @id // "portfolio" | "linkedin" | "bdjobs" | custom id
+  name              String
+  type              String       // "portfolio" | "linkedin" | "bdjobs" | "custom"
+  enabled           Boolean      @default(true)
+  connected         Boolean      @default(false)
+  loginStatus       String       @default("not_connected") // "connected" | "expired" | "not_connected"
+  adapterVersion    String       @default("1.0.0")
+  url               String
+  configJson        String       @default("{}")
+  lastSyncedHash    String?
+  lastSyncedAt      DateTime?
+  lastError         String?
+  healthStatus      String       @default("unknown") // "healthy" | "warning" | "error" | "unknown"
+  healthDetailsJson String?
+  lastHealthCheckAt DateTime?
+  sortOrder         Int          @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  syncRecords       SyncRecord[]
+}
+
+model SyncJob {
+  id             String       @id @default(cuid())
+  jobNumber      Int
+  resumeId       String
+  resume         Resume       @relation(fields: [resumeId], references: [id])
+  status         String       // "running" | "paused" | "completed" | "stopped" | "failed"
+  dryRun         Boolean      @default(false)
+  triggerSource  String       @default("ui") // "ui" | "cli"
+  successCount   Int          @default(0)
+  failedCount    Int          @default(0)
+  skippedCount   Int          @default(0)
+  attentionCount Int          @default(0)
+  startedAt      DateTime     @default(now())
+  completedAt    DateTime?
+  records        SyncRecord[]
+}
+
+model SyncRecord {
+  id             String    @id @default(cuid())
+  syncJobId      String
+  syncJob        SyncJob   @relation(fields: [syncJobId], references: [id], onDelete: Cascade)
+  platformId     String
+  platform       Platform  @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  resumeId       String
+  resume         Resume    @relation(fields: [resumeId], references: [id])
+  adapterVersion String
+  status         String    // "pending" | "running" | "success" | "skipped" | "failed" | "requires_user_action"
+  action         String?   // "uploaded" | "already_up_to_date" | "dry_run_would_upload" | "skipped_by_user" | "failed"
+  targetUrl      String?
+  failureUrl     String?
+  friendlyError  String?
+  technicalError String?
+  screenshotPath String?
+  logsJson       String    @default("[]")
+  durationMs     Int?
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
