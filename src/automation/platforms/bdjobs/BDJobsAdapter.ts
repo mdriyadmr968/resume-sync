@@ -12,6 +12,7 @@ import {
 } from "@/core/types";
 import { BrowserSessionManager } from "@/automation/core/browser-manager";
 import { capturePlatformScreenshot } from "@/automation/core/screenshot";
+import { humanClick, randomDelay } from "@/automation/core/stealth";
 import {
   detectSecurityChallenge,
   findSaveButton,
@@ -90,9 +91,7 @@ export class BDJobsAdapter extends BasePlatformAdapter {
   }
 
   async login(): Promise<{ connected: boolean; message: string }> {
-    const { page } = await BrowserSessionManager.openPlatformContext(this.id, {
-      forceHeadless: false,
-    });
+    const { page } = await BrowserSessionManager.openPlatformContext(this.id);
 
     try {
       await page.goto(this.config.loginUrl, {
@@ -111,7 +110,7 @@ export class BDJobsAdapter extends BasePlatformAdapter {
 
         const loggedIn = await this.isPageAuthenticated(page);
         if (loggedIn) {
-          await page.waitForTimeout(1200);
+          await randomDelay(1000, 1600);
           await BrowserSessionManager.closePlatformContext(this.id);
           return {
             connected: true,

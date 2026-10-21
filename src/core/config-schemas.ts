@@ -89,7 +89,6 @@ export const AppSettingsSchema = z.object({
   dryRunDefault: z.boolean().default(false),
   screenshotOnSuccess: z.boolean().default(true),
   screenshotOnFailure: z.boolean().default(true),
-  browserHeadless: z.boolean().default(false),
   canonicalFileName: z
     .string()
     .min(1)

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { getPlatformProfileDir } from "@/core/paths";
-import { getAppSettings } from "@/core/db";
+import { applyStealthScripts } from "./stealth";
 
 interface ActiveContextEntry {
   context: BrowserContext;
@@ -46,12 +46,13 @@ function clearStaleProfileLockIfNeeded(profileDir: string, platformId: string) {
 export class BrowserSessionManager {
   /**
    * Opens or reuses a persistent Chromium browser context for a specific platform.
+   * Runs in visible headful mode at all times (except headless under TEST_MODE for CI/unit tests).
+   * Applies anti-detection stealth arguments and script evasions.
    * Each platform gets its own isolated profile directory:
    *   data/browser-profiles/<platformId>/
    */
   static async openPlatformContext(
-    platformId: string,
-    options?: { forceHeadless?: boolean }
+    platformId: string
   ): Promise<{ context: BrowserContext; page: Page; profileDir: string }> {
     const existing = activeContexts.get(platformId);
     if (existing) {
@@ -80,31 +81,42 @@ export class BrowserSessionManager {
     clearStaleProfileLockIfNeeded(profileDir, platformId);
 
     try {
-      const settings = await getAppSettings();
       const isTestMode = process.env.TEST_MODE === "true";
-      const envHeadless = process.env.BROWSER_HEADLESS === "true";
-      const headless =
-        options?.forceHeadless ??
-        (isTestMode ? true : envHeadless || settings.browserHeadless || false);
+      // Explicitly enforce headful mode at all times; headless is strictly limited to automated unit tests
+      const headless = isTestMode;
+
+      const stealthArgs = [
+        "--disable-blink-features=AutomationControlled",
+        "--no-default-browser-check",
+        "--no-first-run",
+        "--disable-infobars",
+        "--window-size=1280,880",
+      ];
 
       let context: BrowserContext;
       try {
-        // Prefer standard Chrome channel if installed on Windows for smooth user login UX,
-        // falling back to bundled Playwright Chromium automatically.
+        // Prefer standard Chrome channel if installed on Windows for authentic TLS,
+        // codecs, and natural user environment, falling back to bundled Playwright Chromium.
         context = await chromium.launchPersistentContext(profileDir, {
           headless,
           channel: isTestMode ? undefined : "chrome",
           viewport: { width: 1280, height: 840 },
           acceptDownloads: true,
-          args: ["--disable-blink-features=AutomationControlled"],
+          ignoreDefaultArgs: ["--enable-automation"],
+          args: stealthArgs,
         });
       } catch {
         context = await chromium.launchPersistentContext(profileDir, {
           headless,
           viewport: { width: 1280, height: 840 },
           acceptDownloads: true,
+          ignoreDefaultArgs: ["--enable-automation"],
+          args: stealthArgs,
         });
       }
+
+      // Apply evasions to mask navigator.webdriver, mock window.chrome, and set plugins
+      await applyStealthScripts(context);
 
       const pages = context.pages();
       const page = pages.length > 0 ? pages[0] : await context.newPage();

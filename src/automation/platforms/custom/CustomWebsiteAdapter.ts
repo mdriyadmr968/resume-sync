@@ -75,9 +75,7 @@ export class CustomWebsiteAdapter extends BasePlatformAdapter {
   }
 
   async login(): Promise<{ connected: boolean; message: string }> {
-    const { page } = await BrowserSessionManager.openPlatformContext(this.id, {
-      forceHeadless: false,
-    });
+    const { page } = await BrowserSessionManager.openPlatformContext(this.id);
 
     try {
       await page.goto(this.config.loginUrl, {

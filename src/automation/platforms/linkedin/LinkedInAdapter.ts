@@ -15,6 +15,7 @@ import {
 } from "@/core/types";
 import { BrowserSessionManager } from "@/automation/core/browser-manager";
 import { capturePlatformScreenshot } from "@/automation/core/screenshot";
+import { humanClick, randomDelay } from "@/automation/core/stealth";
 import {
   detectSecurityChallenge,
   findSaveButton,
@@ -89,7 +90,7 @@ export class LinkedInAdapter extends BasePlatformAdapter {
         waitUntil: "domcontentloaded",
         timeout: 25000,
       });
-      await page.waitForTimeout(1500);
+      await randomDelay(1200, 2000);
       return await this.isPageAuthenticated(page);
     } catch {
       return false;
@@ -103,9 +104,7 @@ export class LinkedInAdapter extends BasePlatformAdapter {
    * Waits until the user logs in and reaches the authenticated feed/settings page.
    */
   async login(): Promise<{ connected: boolean; message: string }> {
-    const { page } = await BrowserSessionManager.openPlatformContext(this.id, {
-      forceHeadless: false,
-    });
+    const { page } = await BrowserSessionManager.openPlatformContext(this.id);
 
     try {
       await page.goto("https://www.linkedin.com/login", {
@@ -125,7 +124,7 @@ export class LinkedInAdapter extends BasePlatformAdapter {
 
         const loggedIn = await this.isPageAuthenticated(page);
         if (loggedIn) {
-          await page.waitForTimeout(1500);
+          await randomDelay(1200, 2000);
           await BrowserSessionManager.closePlatformContext(this.id);
           return {
             connected: true,
@@ -174,7 +173,7 @@ export class LinkedInAdapter extends BasePlatformAdapter {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
-      await page.waitForTimeout(2000);
+      await randomDelay(1800, 2600);
 
       // Check for security challenge / 2FA
       const challenge = await detectSecurityChallenge(page);
@@ -316,7 +315,7 @@ export class LinkedInAdapter extends BasePlatformAdapter {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
-      await page.waitForTimeout(2000);
+      await randomDelay(1800, 2600);
     }
 
     // Locate the file upload input or "Upload resume" label/button
@@ -364,14 +363,14 @@ export class LinkedInAdapter extends BasePlatformAdapter {
           ctx.logger.info(
             `Found ${count} stored resumes in LinkedIn Application Settings; removing oldest slot to make room...`
           );
-          await moreActionButtons.last().click();
-          await page.waitForTimeout(600);
+          await humanClick(moreActionButtons.last());
+          await randomDelay(600, 1000);
           const deleteBtn = page
             .getByRole("button", { name: /delete/i })
             .or(page.locator('div[role="button"]:has-text("Delete"), li:has-text("Delete")'));
           if ((await deleteBtn.count()) > 0) {
-            await deleteBtn.first().click();
-            await page.waitForTimeout(1200);
+            await humanClick(deleteBtn.first());
+            await randomDelay(1200, 1800);
           }
         }
       } catch {
@@ -392,12 +391,12 @@ export class LinkedInAdapter extends BasePlatformAdapter {
     } else if (uploadTriggerButton) {
       const [fileChooser] = await Promise.all([
         page.waitForEvent("filechooser", { timeout: 10000 }),
-        uploadTriggerButton.locator.click(),
+        humanClick(uploadTriggerButton.locator),
       ]);
       await fileChooser.setFiles(ctx.resume.filePath);
     }
 
-    await page.waitForTimeout(3500);
+    await randomDelay(3000, 4500);
     ctx.logger.info(
       "Upload to LinkedIn Job Application Settings completed."
     );
@@ -419,7 +418,7 @@ export class LinkedInAdapter extends BasePlatformAdapter {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
-    await page.waitForTimeout(2500);
+    await randomDelay(2000, 3200);
 
     // Check if the direct /edit/forms/featured/new/ opened a modal or if we need to click "+" (Add featured)
     const addButton = await resolveFirstMatchingLocator(
@@ -450,26 +449,27 @@ export class LinkedInAdapter extends BasePlatformAdapter {
       (ctx.resume.downloadUrl || ctx.resume.viewUrl)
     ) {
       if (addButton) {
-        await addButton.locator.click().catch(() => {});
-        await page.waitForTimeout(600);
+        await humanClick(addButton.locator).catch(() => {});
+        await randomDelay(600, 1000);
       }
 
       const addLinkOption = page
         .getByRole("button", { name: /add a link/i })
         .or(page.getByText(/add a link/i));
       if ((await addLinkOption.count()) > 0) {
-        await addLinkOption.first().click();
-        await page.waitForTimeout(1000);
+        await humanClick(addLinkOption.first());
+        await randomDelay(1000, 1600);
 
         const urlInput = page
           .getByLabel(/link|url/i)
           .or(page.locator('input[type="url"], input[type="text"]').first());
         await urlInput.first().fill(ctx.resume.viewUrl || ctx.resume.downloadUrl || "");
+        await randomDelay(400, 800);
 
         const addBtn = page.getByRole("button", { name: /^add$/i });
         if ((await addBtn.count()) > 0) {
-          await addBtn.first().click();
-          await page.waitForTimeout(1500);
+          await humanClick(addBtn.first());
+          await randomDelay(1500, 2200);
         }
       }
     } else {
@@ -477,10 +477,10 @@ export class LinkedInAdapter extends BasePlatformAdapter {
       const directFileInput = await findUploadInput(page);
       if (directFileInput) {
         await directFileInput.locator.setInputFiles(ctx.resume.filePath);
-        await page.waitForTimeout(2500);
+        await randomDelay(2200, 3400);
       } else if (addButton) {
-        await addButton.locator.click().catch(() => {});
-        await page.waitForTimeout(800);
+        await humanClick(addButton.locator).catch(() => {});
+        await randomDelay(800, 1400);
 
         const addMediaOption = page
           .getByRole("button", { name: /add media/i })
@@ -492,11 +492,11 @@ export class LinkedInAdapter extends BasePlatformAdapter {
           } else {
             const [chooser] = await Promise.all([
               page.waitForEvent("filechooser", { timeout: 10000 }),
-              addMediaOption.first().click(),
+              humanClick(addMediaOption.first()),
             ]);
             await chooser.setFiles(ctx.resume.filePath);
           }
-          await page.waitForTimeout(2500);
+          await randomDelay(2500, 3600);
         }
       }
     }
@@ -509,14 +509,15 @@ export class LinkedInAdapter extends BasePlatformAdapter {
       const visible = await titleInput.first().isVisible().catch(() => false);
       if (visible) {
         await titleInput.first().fill(this.config.featuredTitle);
+        await randomDelay(400, 700);
       }
     }
 
     // Click Save button if visible
     const saveBtn = await findSaveButton(page);
     if (saveBtn) {
-      await saveBtn.locator.click();
-      await page.waitForTimeout(2500);
+      await humanClick(saveBtn.locator);
+      await randomDelay(2500, 3500);
       ctx.logger.info("Saved updated resume in LinkedIn Profile Featured section.");
     } else {
       ctx.logger.info(

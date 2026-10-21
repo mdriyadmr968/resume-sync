@@ -10,7 +10,6 @@ export default function SettingsPage() {
     dryRunDefault: false,
     screenshotOnSuccess: true,
     screenshotOnFailure: true,
-    browserHeadless: false,
     canonicalFileName: "Mohammad_Syied_Bin_Salim_Resume.pdf",
   });
   const [saving, setSaving] = useState(false);
