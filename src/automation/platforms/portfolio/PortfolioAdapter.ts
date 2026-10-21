@@ -147,13 +147,15 @@ export class PortfolioAdapter extends BasePlatformAdapter {
     const originalContent = fs.readFileSync(dataFileFull, "utf8");
     let updatedContent = originalContent;
 
-    const desiredResumeUrl = ctx.resume.downloadUrl || "";
+    const desiredResumeUrl =
+      ctx.resume.downloadUrl ||
+      `/${this.config.staticPdfRelativePath.replace(/^public[\\/]/, "")}`;
     const desiredViewUrl = ctx.resume.viewUrl || ctx.resume.sourceUrl || "";
 
     let linksModified = false;
 
     if (desiredResumeUrl) {
-      const resumeUrlRegex = /(resumeUrl\s*:\s*["'])([^"']+)(["'])/;
+      const resumeUrlRegex = /(resumeUrl\s*:\s*[`"'])([^`"']+)([`"'])/;
       const match = updatedContent.match(resumeUrlRegex);
       if (match && match[2] !== desiredResumeUrl) {
         updatedContent = updatedContent.replace(
@@ -166,13 +168,13 @@ export class PortfolioAdapter extends BasePlatformAdapter {
         );
       } else if (match) {
         ctx.logger.info(
-          `siteConfig.resumeUrl already points to 1-click download link (${desiredResumeUrl})`
+          `siteConfig.resumeUrl already points to ${desiredResumeUrl}`
         );
       }
     }
 
     if (desiredViewUrl) {
-      const viewUrlRegex = /(resumeViewUrl\s*:\s*["'])([^"']+)(["'])/;
+      const viewUrlRegex = /(resumeViewUrl\s*:\s*[`"'])([^`"']+)([`"'])/;
       const match = updatedContent.match(viewUrlRegex);
       if (match && match[2] !== desiredViewUrl) {
         updatedContent = updatedContent.replace(
@@ -183,12 +185,29 @@ export class PortfolioAdapter extends BasePlatformAdapter {
         ctx.logger.info(
           `Updated siteConfig.resumeViewUrl -> ${desiredViewUrl}`
         );
+      } else if (!match) {
+        const insertRegex = /(resumeUrl\s*:\s*[`"'][^`"']+[`"'],?)/;
+        if (insertRegex.test(updatedContent)) {
+          updatedContent = updatedContent.replace(
+            insertRegex,
+            `$1\n  resumeViewUrl: "${desiredViewUrl}",`
+          );
+          linksModified = true;
+          ctx.logger.info(
+            `Added siteConfig.resumeViewUrl -> ${desiredViewUrl}`
+          );
+        }
       }
     }
 
     let staticPdfModified = false;
     const staticPdfFull = path.join(repoPath, this.config.staticPdfRelativePath);
-    if (this.config.copyStaticPdf) {
+    const shouldCopyStatic =
+      this.config.copyStaticPdf ||
+      ctx.resume.sourceType === "local_file" ||
+      !ctx.resume.downloadUrl;
+
+    if (shouldCopyStatic) {
       if (fs.existsSync(staticPdfFull)) {
         const existingHash = calculateFileSha256(staticPdfFull);
         if (existingHash !== ctx.resume.fileHash) {
@@ -202,8 +221,8 @@ export class PortfolioAdapter extends BasePlatformAdapter {
     if (ctx.dryRun) {
       const actionMsg =
         linksModified || staticPdfModified
-          ? `Dry Run: Would update ${this.config.dataFilePath} with 1-click download link and push to ${this.config.gitBranch}`
-          : `Dry Run: Portfolio 1-click download link in ${this.config.dataFilePath} is already synchronized and serving latest Google Doc PDF`;
+          ? `Dry Run: Would update ${this.config.dataFilePath} with resume link and push to ${this.config.gitBranch}`
+          : `Dry Run: Portfolio resume link in ${this.config.dataFilePath} is already synchronized and serving latest resume`;
       ctx.logger.info(actionMsg);
       return {
         platform: this.id,
@@ -220,7 +239,7 @@ export class PortfolioAdapter extends BasePlatformAdapter {
       fs.writeFileSync(dataFileFull, updatedContent, "utf8");
     }
 
-    if (this.config.copyStaticPdf && staticPdfModified) {
+    if (shouldCopyStatic && staticPdfModified) {
       const destDir = path.dirname(staticPdfFull);
       if (!fs.existsSync(destDir)) {
         fs.mkdirSync(destDir, { recursive: true });
@@ -232,7 +251,7 @@ export class PortfolioAdapter extends BasePlatformAdapter {
     if ((linksModified || staticPdfModified) && this.config.autoCommitAndPush) {
       await ctx.checkpoint(this.config.publicSiteUrl, "Committing and pushing portfolio update");
       const filesToStage = [this.config.dataFilePath];
-      if (this.config.copyStaticPdf && staticPdfModified) {
+      if (shouldCopyStatic && staticPdfModified) {
         filesToStage.push(this.config.staticPdfRelativePath);
       }
 
@@ -423,14 +442,37 @@ export class PortfolioAdapter extends BasePlatformAdapter {
       }
 
       const content = fs.readFileSync(dataFileFull, "utf8");
-      const match = content.match(/resumeUrl\s*:\s*["']([^"']+)["']/);
+      const match = content.match(/resumeUrl\s*:\s*[`"']([^`"']+)[`"']/);
       const configuredUrl = match ? match[1] : "";
 
-      if (ctx.resume.downloadUrl && configuredUrl !== ctx.resume.downloadUrl) {
+      const expectedResumeUrl =
+        ctx.resume.downloadUrl ||
+        `/${this.config.staticPdfRelativePath.replace(/^public[\\/]/, "")}`;
+
+      if (expectedResumeUrl && configuredUrl !== expectedResumeUrl) {
         return {
           verified: false,
-          details: `siteConfig.resumeUrl (${configuredUrl}) does not match expected (${ctx.resume.downloadUrl})`,
+          details: `siteConfig.resumeUrl (${configuredUrl}) does not match expected (${expectedResumeUrl})`,
         };
+      }
+
+      const staticPdfFull = path.join(
+        repoPath,
+        this.config.staticPdfRelativePath
+      );
+      const shouldCheckStatic =
+        this.config.copyStaticPdf ||
+        ctx.resume.sourceType === "local_file" ||
+        !ctx.resume.downloadUrl;
+
+      if (shouldCheckStatic && fs.existsSync(staticPdfFull)) {
+        const destHash = calculateFileSha256(staticPdfFull);
+        if (destHash !== ctx.resume.fileHash) {
+          return {
+            verified: false,
+            details: `Static PDF file at ${this.config.staticPdfRelativePath} hash mismatch`,
+          };
+        }
       }
 
       return {
